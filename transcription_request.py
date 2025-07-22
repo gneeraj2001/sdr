@@ -50,6 +50,6 @@ def transcribe_audio(audio_file_path, api_key):
 if __name__ == "__main__":
     # Replace these with your values
     AUDIO_FILE = "sample.wav"  # Your audio file
-    API_KEY = "BpjRmzHc.Vv3stAS1sTO5Bjzq3fu60zOVUeIpWpZ7"  # Your API key
+    API_KEY = ""  # Your API key
     
     transcribe_audio(AUDIO_FILE, API_KEY) 
