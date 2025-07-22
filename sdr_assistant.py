@@ -177,9 +177,9 @@ class SDRAssistant(chains.ChainletBase):
         self._analyzer = analyzer
         self._email_generator = email_generator
 
-    async def run_remote(self, audio_data: bytes) -> SDRResponse:
-        # Create input with base64 audio
-        audio_input = AudioInput(audio_data=base64.b64encode(audio_data).decode('utf-8'))
+    async def run_remote(self, audio_data: str) -> SDRResponse:
+        # Create input with base64 audio (already base64 encoded from request)
+        audio_input = AudioInput(audio_data=audio_data)
         
         # Process pipeline
         transcript = await self._transcriber.run_remote(audio_input)
