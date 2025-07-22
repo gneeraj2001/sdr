@@ -1,0 +1,154 @@
+# Baseten Chains - Core Concepts Documentation
+
+## 1. Fundamental Concepts
+
+### Chains
+- A Chain is a complete workflow composed of multiple Chainlets
+- Chains are written in Python files
+- Each Chain must have exactly one entrypoint Chainlet
+- Chains can be deployed, monitored, and scaled independently
+
+### Chainlets
+- Basic building blocks of a Chain
+- Each Chainlet is a Python class inheriting from chains.ChainletBase
+- Must have a run_remote() method that is fully type-annotated
+- Can depend on other Chainlets using chains.depends()
+- Cannot use global variables or dynamic module imports
+- Can be configured with specific compute resources
+
+### Entrypoint
+- One Chainlet must be marked as entrypoint using @chains.mark_entrypoint
+- Handles public-facing input/output for the Chain
+- Responsible for orchestrating calls to dependent Chainlets
+
+## 2. Configuration & Resources
+
+### RemoteConfig
+- Defines resources required for a Chainlet
+- Components:
+  - docker_image: Specifies dependencies and packages
+  - compute: CPU/GPU requirements
+  - assets: Cached model weights or other resources
+
+### Compute Resources
+- Can specify CPU count and GPU type
+- Example GPU types: "T4", etc.
+- Resources are allocated per Chainlet
+- Supports auto-scaling based on load
+
+## 3. Development Features
+
+### Local Development
+- Support for local debugging mode
+- Live code reloading with 'watch' command
+- Development deployments for testing
+
+### Deployment
+- Deploy using 'truss chains push'
+- Support for different environments
+- Zero-downtime updates
+- Version control and rollback capabilities
+
+## 4. Integration Capabilities
+
+### LangChain Integration
+- Can be used with LangChain components
+- Supports LLMs, embeddings, and other LangChain features
+- Compatible with LangChain's chain and agent patterns
+
+### External Services
+- Can integrate with:
+  - CRM systems
+  - Email platforms
+  - Database systems
+  - API services
+
+## 5. Best Practices
+
+### Code Organization
+- Keep Chainlets focused and single-purpose
+- Use type hints for all run_remote methods
+- Avoid global state
+- Handle errors appropriately
+
+### Resource Management
+- Allocate resources based on Chainlet needs
+- Use appropriate GPU types for ML tasks
+- Consider cost optimization in resource allocation
+
+### Monitoring
+- Built-in observability tools
+- Performance monitoring
+- Error tracking
+- Usage analytics
+
+## 6. Security & Compliance
+
+### API Security
+- API key authentication
+- Environment-based secrets management
+- Secure data handling
+
+### Data Privacy
+- Support for data encryption
+- Compliance with privacy regulations
+- Secure storage of sensitive information
+
+## 7. Deployment Workflow
+
+### Development Cycle
+1. Initialize project: truss chains init
+2. Develop Chainlets
+3. Local testing
+4. Deploy with truss chains push
+5. Monitor and iterate
+
+### Environment Management
+- Support for multiple environments
+  - Development
+  - Staging
+  - Production
+- Environment-specific configurations
+- Deployment promotion between environments
+
+## 8. Error Handling
+
+### Best Practices
+- Implement proper error handling in run_remote
+- Use appropriate error types
+- Provide meaningful error messages
+- Handle retries and fallbacks
+
+### Common Patterns
+- Retry mechanisms for transient failures
+- Graceful degradation
+- Error logging and monitoring
+- Circuit breakers for dependent services
+
+## 9. Performance Optimization
+
+### Strategies
+- Proper resource allocation
+- Efficient data handling
+- Caching when appropriate
+- Batch processing where possible
+
+### Scaling
+- Automatic scaling based on load
+- Resource optimization
+- Cost management
+- Performance monitoring
+
+## 10. Testing
+
+### Testing Approaches
+- Unit testing individual Chainlets
+- Integration testing of Chains
+- Load testing
+- Error scenario testing
+
+### Validation
+- Input validation
+- Output validation
+- Performance validation
+- Security validation 

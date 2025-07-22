@@ -2,16 +2,12 @@ import asyncio
 import truss_chains as chains
 import pydantic
 from typing import Dict, List
-import numpy as np
-import io
-import soundfile as sf
 import base64
 
-# Data Models
 class AudioInput(pydantic.BaseModel):
     """Input format for the SDR assistant"""
     audio_data: str  # base64 encoded audio data
-    config: Dict[str, str | int | float | bool] = {}  # Optional configuration with specific types
+    config: Dict[str, str | int | float | bool] = {}
 
     class Config:
         arbitrary_types_allowed = True
@@ -22,7 +18,7 @@ class TranscriptionResult(pydantic.BaseModel):
     duration: float
 
 class ConversationAnalysis(pydantic.BaseModel):
-    sentiment: Dict[str, str | float]  # Allow both string and float values
+    sentiment: Dict[str, str | float]
     intents: List[str]
     key_topics: List[str]
     summary: str
@@ -43,45 +39,45 @@ class AudioTranscriptionChainlet(chains.ChainletBase):
     remote_config = chains.RemoteConfig(
         docker_image=chains.DockerImage(
             pip_requirements=[
-                "openai-whisper",
-                "torch",
-                "numpy",
-                "soundfile"
+                "openai-whisper==20231117",
+                "torch==2.0.1",
+                "numpy==1.24.3",
+                "soundfile==0.12.1"
             ]
         ),
-        compute=chains.Compute(gpu="T4")
+        compute=chains.Compute(
+            gpu="T4",
+            memory="16Gi"
+        )
     )
 
     async def run_remote(self, audio_input: AudioInput) -> TranscriptionResult:
+        # Note: imports are inside run_remote, just like in Baseten's example
         import whisper
+        import numpy as np
+        import soundfile as sf
+        import io
+
+        # Initialize model (done each time, like in their example)
+        model = whisper.load_model("base")
         
-        try:
-            # Decode base64 audio data
-            audio_bytes = base64.b64decode(audio_input.audio_data)
-            
-            # Convert bytes to numpy array
-            audio_io = io.BytesIO(audio_bytes)
-            audio, sr = sf.read(audio_io)
-            
-            # Ensure float32
-            audio = audio.astype(np.float32)
-            if len(audio.shape) > 1:  # Convert stereo to mono
-                audio = audio.mean(axis=1).astype(np.float32)
-            
-            # Initialize Whisper model
-            model = whisper.load_model("base")
-            
-            # Process audio and get transcription
-            result = model.transcribe(audio)
-            
-            return TranscriptionResult(
-                text=result["text"],
-                language=result["language"],
-                duration=float(len(audio) / sr)
-            )
-        except Exception as e:
-            print(f"Error processing audio: {str(e)}")
-            raise
+        # Process audio
+        audio_bytes = base64.b64decode(audio_input.audio_data)
+        audio_io = io.BytesIO(audio_bytes)
+        audio, sr = sf.read(audio_io)
+        audio = audio.astype(np.float32)
+        
+        if len(audio.shape) > 1:
+            audio = audio.mean(axis=1).astype(np.float32)
+        
+        # Get transcription
+        result = model.transcribe(audio)
+        
+        return TranscriptionResult(
+            text=result["text"],
+            language=result["language"],
+            duration=float(len(audio) / sr)
+        )
 
 class ConversationAnalysisChainlet(chains.ChainletBase):
     """Analyzes conversation content"""
@@ -89,41 +85,36 @@ class ConversationAnalysisChainlet(chains.ChainletBase):
     remote_config = chains.RemoteConfig(
         docker_image=chains.DockerImage(
             pip_requirements=[
-                "transformers",
-                "torch",
-                "accelerate"
+                "transformers==4.30.0",
+                "torch==2.0.1"
             ]
         ),
-        compute=chains.Compute(gpu="T4")
+        compute=chains.Compute(
+            gpu="T4",
+            memory="8Gi"
+        )
     )
 
     async def run_remote(self, transcript: TranscriptionResult) -> ConversationAnalysis:
         from transformers import pipeline
         
-        # Initialize analyzers
+        # Initialize models (done each time, like in their example)
         sentiment_analyzer = pipeline("text-classification", model="SamLowe/roberta-base-go_emotions")
         summarizer = pipeline("summarization", model="facebook/bart-large-cnn")
         
-        # Analyze text
+        # Analyze
         sentiment = sentiment_analyzer(transcript.text)[0]
-        
-        # Generate summary
         summary = summarizer(transcript.text, max_length=130, min_length=30)[0]["summary_text"]
         
-        # Extract key topics (simplified version)
+        # Simple rule-based analysis
         topics = ["pricing", "features"] if "price" in transcript.text.lower() else ["general inquiry"]
-        
-        # Determine intent (simplified version)
         intents = []
         if "how" in transcript.text.lower(): intents.append("information_request")
         if "buy" in transcript.text.lower() or "purchase" in transcript.text.lower(): intents.append("purchase_intent")
         if not intents: intents.append("general_inquiry")
         
         return ConversationAnalysis(
-            sentiment={
-                "score": float(sentiment["score"]),  # Ensure it's float
-                "label": str(sentiment["label"])     # Ensure it's string
-            },
+            sentiment={"score": float(sentiment["score"]), "label": str(sentiment["label"])},
             intents=intents,
             key_topics=topics,
             summary=summary
@@ -135,21 +126,23 @@ class EmailGenerationChainlet(chains.ChainletBase):
     remote_config = chains.RemoteConfig(
         docker_image=chains.DockerImage(
             pip_requirements=[
-                "transformers",
-                "torch",
-                "accelerate"
+                "transformers==4.30.0",
+                "torch==2.0.1"
             ]
         ),
-        compute=chains.Compute(gpu="T4")
+        compute=chains.Compute(
+            gpu="T4",
+            memory="8Gi"
+        )
     )
 
     async def run_remote(self, analysis: ConversationAnalysis) -> EmailContent:
         from transformers import pipeline
         
-        # Initialize text generator
+        # Initialize model (done each time, like in their example)
         generator = pipeline("text-generation", model="gpt2")
         
-        # Create prompt based on analysis
+        # Create prompt
         prompt = f"""Write a follow-up email.
         Topics discussed: {', '.join(analysis.key_topics)}
         Customer sentiment: {analysis.sentiment['label']}
@@ -157,10 +150,10 @@ class EmailGenerationChainlet(chains.ChainletBase):
         Intent: {', '.join(analysis.intents)}
         """
         
-        # Generate email content
+        # Generate
         generated = generator(prompt, max_length=200, num_return_sequences=1)[0]["generated_text"]
         
-        # Extract subject and body (simplified)
+        # Format
         lines = generated.split('\n')
         subject = lines[0] if lines else "Follow-up from our conversation"
         body = '\n'.join(lines[1:]) if len(lines) > 1 else generated
@@ -184,108 +177,49 @@ class SDRAssistant(chains.ChainletBase):
         self._analyzer = analyzer
         self._email_generator = email_generator
 
-    async def run_remote(self, audio_input: AudioInput) -> SDRResponse:
-        # 1. Transcribe audio
+    async def run_remote(self, audio_data: bytes) -> SDRResponse:
+        # Create input with base64 audio
+        audio_input = AudioInput(audio_data=base64.b64encode(audio_data).decode('utf-8'))
+        
+        # Process pipeline
         transcript = await self._transcriber.run_remote(audio_input)
-        
-        # 2. Analyze conversation
         analysis = await self._analyzer.run_remote(transcript)
-        
-        # 3. Generate email
         email = await self._email_generator.run_remote(analysis)
         
-        # Return complete response
         return SDRResponse(
             transcription=transcript,
             analysis=analysis,
             email=email
         )
 
-def create_test_audio():
-    """Create a simple test audio file (a 3-second sine wave)"""
-    # Generate a 3-second sine wave at 440 Hz
-    sample_rate = 16000
-    duration = 3
-    t = np.linspace(0, duration, int(sample_rate * duration))
-    audio = np.sin(2 * np.pi * 440 * t).astype(np.float32)  # Convert to float32
-    
-    # Save to bytes buffer
-    buffer = io.BytesIO()
-    sf.write(buffer, audio, sample_rate, format='WAV', subtype='FLOAT')  # Specify float format
-    buffer.seek(0)
-    
-    return buffer.read()
-
-# Example of how to use it with requests:
-"""
-import requests
-import base64
-
-def send_audio_to_sdr(audio_file_path, api_key):
-    # Read audio file
-    with open(audio_file_path, 'rb') as f:
-        audio_bytes = f.read()
-    
-    # Convert to base64
-    audio_base64 = base64.b64encode(audio_bytes).decode('utf-8')
-    
-    # Prepare request
-    payload = {
-        "audio_data": audio_base64,
-        "config": {}  # Optional configuration
-    }
-    
-    # Send request
-    response = requests.post(
-        "https://chain-xxxxx.api.baseten.co/development/run_remote",
-        headers={"Authorization": f"Api-Key {api_key}"},
-        json=payload
-    )
-    
-    return response.json()
-"""
-
 if __name__ == "__main__":
-    # Test the chain locally
     with chains.run_local():
-        try:
-            # Option 1: Test with generated sine wave
-            print("\nTesting with generated audio...")
-            audio_data = create_test_audio()
-            audio_base64 = base64.b64encode(audio_data).decode('utf-8')
-            
-            # Option 2: Test with real audio file (uncomment to use)
-            """
-            print("\nTesting with real audio file...")
-            with open("your_audio.wav", "rb") as f:
-                audio_data = f.read()
-                audio_base64 = base64.b64encode(audio_data).decode('utf-8')
-            """
-            
-            # Create input in the same format as HTTP requests
-            test_input = AudioInput(
-                audio_data=audio_base64,
-                config={}  # Optional configuration
-            )
-            
-            print("Initializing chain...")
-            chain = SDRAssistant()
-            
-            print("Running chain...")
-            result = asyncio.run(chain.run_remote(test_input))
-            
-            print("\nResults:")
-            print("\nTranscription:")
-            print(result.transcription.text)
-            print("\nAnalysis:")
-            print(f"- Sentiment: {result.analysis.sentiment}")
-            print(f"- Intents: {result.analysis.intents}")
-            print(f"- Key Topics: {result.analysis.key_topics}")
-            print(f"- Summary: {result.analysis.summary}")
-            print("\nGenerated Email:")
-            print(f"Subject: {result.email.subject}")
-            print(f"Body: {result.email.body}")
-            
-        except Exception as e:
-            print(f"Error during testing: {str(e)}")
-            raise 
+        # Create test audio (simple sine wave)
+        import numpy as np
+        import soundfile as sf
+        import io
+        
+        print("Creating test audio...")
+        sample_rate = 16000
+        duration = 3
+        t = np.linspace(0, duration, int(sample_rate * duration))
+        audio = np.sin(2 * np.pi * 440 * t).astype(np.float32)
+        buffer = io.BytesIO()
+        sf.write(buffer, audio, sample_rate, format='WAV', subtype='FLOAT')
+        audio_data = buffer.getvalue()
+        
+        print("Running chain...")
+        chain = SDRAssistant()
+        result = asyncio.run(chain.run_remote(audio_data))
+        
+        print("\nResults:")
+        print("\nTranscription:")
+        print(result.transcription.text)
+        print("\nAnalysis:")
+        print(f"- Sentiment: {result.analysis.sentiment}")
+        print(f"- Intents: {result.analysis.intents}")
+        print(f"- Key Topics: {result.analysis.key_topics}")
+        print(f"- Summary: {result.analysis.summary}")
+        print("\nGenerated Email:")
+        print(f"Subject: {result.email.subject}")
+        print(f"Body: {result.email.body}") 

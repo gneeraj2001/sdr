@@ -1,0 +1,163 @@
+# SDR System Architecture Using Baseten Chains
+
+## 1. System Components (Chainlets)
+
+### AudioTranscriptionChainlet
+- Purpose: Transcribe call audio using Whisper
+- Input: Audio file (various formats)
+- Output: Transcribed text
+- Resources: GPU (T4) for Whisper model
+- Dependencies: whisper, torch
+- Key Features:
+  - Real-time or post-call transcription
+  - Speaker diarization
+  - Timestamp mapping
+
+### ConversationAnalysisChainlet
+- Purpose: Analyze conversation for insights
+- Input: Transcribed text
+- Output: Structured analysis data
+- Resources: GPU for LLM analysis
+- Dependencies: transformers, torch
+- Analysis Components:
+  - Sentiment tracking
+  - Intent detection
+  - Objection identification
+  - Key topics/pain points
+  - Next action recommendations
+
+### EmailGenerationChainlet
+- Purpose: Generate personalized follow-up emails
+- Input: Conversation analysis data
+- Output: Formatted email content
+- Resources: GPU for LLM generation
+- Dependencies: transformers, torch
+- Features:
+  - Template-based generation
+  - Personalization based on conversation
+  - Multiple style options
+  - Action item inclusion
+
+### CRMIntegrationChainlet
+- Purpose: Handle CRM interactions
+- Input: Analysis data and generated email
+- Output: CRM update confirmation
+- Resources: CPU only
+- Features:
+  - Contact updates
+  - Activity logging
+  - Task creation
+  - Email scheduling
+
+### EntrypointChainlet (SDRAssistant)
+- Purpose: Orchestrate the entire workflow
+- Input: Audio file or real-time stream
+- Output: Complete follow-up package
+- Dependencies: All other Chainlets
+- Features:
+  - Workflow coordination
+  - Error handling
+  - Status tracking
+  - Result aggregation
+
+## 2. Data Flow
+
+1. Input Reception:
+   Audio → EntrypointChainlet
+
+2. Primary Processing:
+   EntrypointChainlet → AudioTranscriptionChainlet
+   Transcription → ConversationAnalysisChainlet
+
+3. Content Generation:
+   Analysis → EmailGenerationChainlet
+
+4. Integration:
+   Generated Content → CRMIntegrationChainlet
+
+5. Output Delivery:
+   EntrypointChainlet → Final Response
+
+## 3. Resource Allocation
+
+### GPU Resources:
+- AudioTranscriptionChainlet: T4 GPU
+- ConversationAnalysisChainlet: T4 GPU
+- EmailGenerationChainlet: T4 GPU
+
+### CPU Resources:
+- CRMIntegrationChainlet: 2 CPUs
+- EntrypointChainlet: 1 CPU
+
+## 4. Scaling Configuration
+
+### Auto-scaling Triggers:
+- Concurrent calls threshold
+- Processing time threshold
+- Queue length threshold
+
+### Scaling Limits:
+- Min instances per Chainlet: 1
+- Max instances per Chainlet: Based on load
+- Cool-down periods: Configurable
+
+## 5. Integration Points
+
+### External Services:
+- CRM Systems (Salesforce, HubSpot)
+- Email Providers (Gmail, Outlook)
+- Audio Processing Services
+- Storage Services
+
+### Internal Services:
+- Monitoring
+- Logging
+- Analytics
+- Error Tracking
+
+## 6. Development Phases
+
+### Phase 1 - Core Functionality:
+1. Audio transcription
+2. Basic analysis
+3. Simple email generation
+
+### Phase 2 - Enhanced Features:
+1. Advanced analysis
+2. Template customization
+3. CRM integration
+
+### Phase 3 - Optimization:
+1. Real-time processing
+2. Advanced integrations
+3. Performance optimization
+
+## 7. Monitoring & Observability
+
+### Metrics to Track:
+- Transcription accuracy
+- Analysis quality
+- Email effectiveness
+- System latency
+- Resource utilization
+- Error rates
+
+### Logging:
+- Component-level logs
+- System-level logs
+- Integration logs
+- Error logs
+
+## 8. Security Considerations
+
+### Data Protection:
+- Audio file encryption
+- Transcript encryption
+- Secure storage
+- Access control
+
+### Compliance:
+- GDPR compliance
+- CCPA compliance
+- Industry-specific regulations
+- Data retention policies 
