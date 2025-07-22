@@ -5,8 +5,17 @@ from typing import Dict, List
 import numpy as np
 import io
 import soundfile as sf
+import base64
 
 # Data Models
+class AudioInput(pydantic.BaseModel):
+    """Input format for the SDR assistant"""
+    audio_data: str  # base64 encoded audio data
+    config: Dict[str, str | int | float | bool] = {}  # Optional configuration with specific types
+
+    class Config:
+        arbitrary_types_allowed = True
+
 class TranscriptionResult(pydantic.BaseModel):
     text: str
     language: str
@@ -43,28 +52,36 @@ class AudioTranscriptionChainlet(chains.ChainletBase):
         compute=chains.Compute(gpu="T4")
     )
 
-    async def run_remote(self, audio_data: bytes) -> TranscriptionResult:
+    async def run_remote(self, audio_input: AudioInput) -> TranscriptionResult:
         import whisper
         
-        # Convert bytes to numpy array
-        audio_io = io.BytesIO(audio_data)
-        audio, sr = sf.read(audio_io)
-        audio = audio.astype(np.float32)  # Ensure float32
-        
-        if len(audio.shape) > 1:  # Convert stereo to mono
-            audio = audio.mean(axis=1).astype(np.float32)
-        
-        # Initialize Whisper model
-        model = whisper.load_model("base")
-        
-        # Process audio and get transcription
-        result = model.transcribe(audio)
-        
-        return TranscriptionResult(
-            text=result["text"],
-            language=result["language"],
-            duration=float(len(audio) / sr)
-        )
+        try:
+            # Decode base64 audio data
+            audio_bytes = base64.b64decode(audio_input.audio_data)
+            
+            # Convert bytes to numpy array
+            audio_io = io.BytesIO(audio_bytes)
+            audio, sr = sf.read(audio_io)
+            
+            # Ensure float32
+            audio = audio.astype(np.float32)
+            if len(audio.shape) > 1:  # Convert stereo to mono
+                audio = audio.mean(axis=1).astype(np.float32)
+            
+            # Initialize Whisper model
+            model = whisper.load_model("base")
+            
+            # Process audio and get transcription
+            result = model.transcribe(audio)
+            
+            return TranscriptionResult(
+                text=result["text"],
+                language=result["language"],
+                duration=float(len(audio) / sr)
+            )
+        except Exception as e:
+            print(f"Error processing audio: {str(e)}")
+            raise
 
 class ConversationAnalysisChainlet(chains.ChainletBase):
     """Analyzes conversation content"""
@@ -163,19 +180,19 @@ class SDRAssistant(chains.ChainletBase):
         analyzer=chains.depends(ConversationAnalysisChainlet),
         email_generator=chains.depends(EmailGenerationChainlet)
     ):
-        self._transcriber = transcriber  # Store as instance variable with underscore
-        self._analyzer = analyzer  # Store as instance variable with underscore
-        self._email_generator = email_generator  # Store as instance variable with underscore
+        self._transcriber = transcriber
+        self._analyzer = analyzer
+        self._email_generator = email_generator
 
-    async def run_remote(self, audio_data: bytes) -> SDRResponse:
+    async def run_remote(self, audio_input: AudioInput) -> SDRResponse:
         # 1. Transcribe audio
-        transcript = await self._transcriber.run_remote(audio_data)  # Use instance variable
+        transcript = await self._transcriber.run_remote(audio_input)
         
         # 2. Analyze conversation
-        analysis = await self._analyzer.run_remote(transcript)  # Use instance variable
+        analysis = await self._analyzer.run_remote(transcript)
         
         # 3. Generate email
-        email = await self._email_generator.run_remote(analysis)  # Use instance variable
+        email = await self._email_generator.run_remote(analysis)
         
         # Return complete response
         return SDRResponse(
@@ -199,24 +216,76 @@ def create_test_audio():
     
     return buffer.read()
 
+# Example of how to use it with requests:
+"""
+import requests
+import base64
+
+def send_audio_to_sdr(audio_file_path, api_key):
+    # Read audio file
+    with open(audio_file_path, 'rb') as f:
+        audio_bytes = f.read()
+    
+    # Convert to base64
+    audio_base64 = base64.b64encode(audio_bytes).decode('utf-8')
+    
+    # Prepare request
+    payload = {
+        "audio_data": audio_base64,
+        "config": {}  # Optional configuration
+    }
+    
+    # Send request
+    response = requests.post(
+        "https://chain-xxxxx.api.baseten.co/development/run_remote",
+        headers={"Authorization": f"Api-Key {api_key}"},
+        json=payload
+    )
+    
+    return response.json()
+"""
+
 if __name__ == "__main__":
     # Test the chain locally
     with chains.run_local():
-        print("Creating test audio...")
-        audio_data = create_test_audio()
-        
-        print("Initializing chain...")
-        chain = SDRAssistant()
-        
-        print("Running chain...")
-        result = asyncio.run(chain.run_remote(audio_data))
-        
-        print("\nResults:")
-        print("Transcription:", result.transcription.text)
-        print("\nAnalysis:")
-        print("- Sentiment:", result.analysis.sentiment)
-        print("- Key Topics:", result.analysis.key_topics)
-        print("- Summary:", result.analysis.summary)
-        print("\nGenerated Email:")
-        print("Subject:", result.email.subject)
-        print("Body:", result.email.body) 
+        try:
+            # Option 1: Test with generated sine wave
+            print("\nTesting with generated audio...")
+            audio_data = create_test_audio()
+            audio_base64 = base64.b64encode(audio_data).decode('utf-8')
+            
+            # Option 2: Test with real audio file (uncomment to use)
+            """
+            print("\nTesting with real audio file...")
+            with open("your_audio.wav", "rb") as f:
+                audio_data = f.read()
+                audio_base64 = base64.b64encode(audio_data).decode('utf-8')
+            """
+            
+            # Create input in the same format as HTTP requests
+            test_input = AudioInput(
+                audio_data=audio_base64,
+                config={}  # Optional configuration
+            )
+            
+            print("Initializing chain...")
+            chain = SDRAssistant()
+            
+            print("Running chain...")
+            result = asyncio.run(chain.run_remote(test_input))
+            
+            print("\nResults:")
+            print("\nTranscription:")
+            print(result.transcription.text)
+            print("\nAnalysis:")
+            print(f"- Sentiment: {result.analysis.sentiment}")
+            print(f"- Intents: {result.analysis.intents}")
+            print(f"- Key Topics: {result.analysis.key_topics}")
+            print(f"- Summary: {result.analysis.summary}")
+            print("\nGenerated Email:")
+            print(f"Subject: {result.email.subject}")
+            print(f"Body: {result.email.body}")
+            
+        except Exception as e:
+            print(f"Error during testing: {str(e)}")
+            raise 
