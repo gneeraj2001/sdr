@@ -1,0 +1,8 @@
+truss>=0.5.0
+pydantic>=2.0.0
+openai-whisper
+torch
+transformers
+numpy
+soundfile
+accelerate 
