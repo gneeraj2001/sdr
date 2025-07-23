@@ -21,7 +21,7 @@ def transcribe_audio(audio_file_path, api_key):
         }
         
         # Make request to the transcription chainlet
-        endpoint = "https://chain-yqvv7eq8.api.baseten.co/development/chainlet/AudioTranscriptionChainlet/run_remote"
+        endpoint = ""
         
         print(f"Sending request to transcription service...")
         response = requests.post(
